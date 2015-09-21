@@ -1,0 +1,14 @@
+               capacity     operations    bandwidth
+pool        alloc   free   read  write   read  write
+----------  -----  -----  -----  -----  -----  -----
+ost0        1.37M  36.2T      0      1      0  4.05K
+ost0        53.1G  36.2T      0    834      0   812M
+ost0         111G  36.1T      0    844  1.07K   824M
+ost0         169G  36.1T      0    844  1.07K   825M
+ost0         227G  36.0T      0    843  1.07K   823M
+ost0         300G  36.0T      0    839  1.01K   816M
+ost0         358G  35.9T      0    842     1K   822M
+ost0         416G  35.8T      0    838  1.07K   818M
+ost0         474G  35.8T      0    840  1.27K   820M
+ost0         532G  35.7T      0    837  1.21K   816M
+ost0         590G  35.7T      0    842  1.13K   821M

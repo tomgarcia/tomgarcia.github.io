@@ -1,0 +1,9 @@
+               capacity     operations    bandwidth
+pool        alloc   free   read  write   read  write
+----------  -----  -----  -----  -----  -----  -----
+ost0         632G  35.6T      0    704    913   686M
+ost0         632G  35.6T  1.35K     54  1.33G  53.2M
+ost0         642G  35.6T  1.52K      9  1.50G  7.53M
+ost0         642G  35.6T  1.55K      0  1.53G      0
+ost0         642G  35.6T  1.56K      0  1.54G      0
+ost0         642G  35.6T  1.55K      0  1.53G      0

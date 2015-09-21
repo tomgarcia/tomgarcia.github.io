@@ -1,0 +1,8 @@
+               capacity     operations    bandwidth
+pool        alloc   free   read  write   read  write
+----------  -----  -----  -----  -----  -----  -----
+ost0         704G  39.3T      0  1.26K  1.75K  1.23G
+ost0         704G  39.3T  2.03K      0  2.01G      0
+ost0         704G  39.3T  2.03K      0  2.00G      0
+ost0         704G  39.3T  2.05K      0  2.02G      0
+ost0         704G  39.3T  1.90K      1  1.87G  6.47K

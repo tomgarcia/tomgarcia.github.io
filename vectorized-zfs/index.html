@@ -433,8 +433,8 @@
         increase, meaning there must be some other bottleneck. One way to find
         this bottleneck is to compare flamegraphs:
     </p>
-    <object data="graphs/control-raidz3.svg"></object>
-    <object data="graphs/avx-raidz3.svg"></object>
+    <object data="single/raidz3/control/flamegraph.svg"></object>
+    <object data="single/raidz3/avx128/flamegraph.svg"></object>
     <p>
         Looking at the Raidz3 control and Raidz3 AVX128 graphs, we can see that
         much more time is used for idling, which suggests that hardware may be
