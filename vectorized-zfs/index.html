@@ -1,0 +1,457 @@
+<html>
+<head>
+    <style>
+        main {
+            max-width: 55em;
+            margin: 0 auto;
+            font-family: Helvetica, sans-serif;
+        }
+        table {
+            border-spacing: 0;
+            border-collapse: collapse;
+        }
+        th, td {
+            border-style: solid;
+        }
+        object {
+            width: 900;
+        }
+        p {
+            line-height: 150%;
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Raid Parity and Checksum Vectorization</h1>
+    <p>
+        In April Rick Wagner profiled SDSC's Comet system, and found that
+        RAID parity and checksum calculations were the main bottleneck
+        slowing down ZFS's read and write bandwidth. Since then, people have
+        rewritten these algorithms to take advantage of SSE and AVX vector
+        instructions. The purpose of my testing has been to measure how
+        performance has changed with these vectorization patches.
+    </p>
+    <h2>Procedure</h2>
+    <p>
+        Testing was performed using two of SDSC's Wombat servers, each with
+        two 8-core Ivy Bridge Xeon E5-2650 v2 processors, with 126GB RAM at
+        1867 MHz, which allowed us to test SSE and AVX128, but not AVX2. For
+        the zpools, we used eight data drives and 0-3 parity drives, depending
+        on the parity level (0 for striped). The pools each have a total
+        capacity of 29.6TB, not including parity data.
+    </p>
+    <p>
+        Testing consists of two stages, writing and reading. During the
+        writing stage, 128GB of random data (generated with lrand48) is
+        written to each of 4 files on a pool, concurrently. After a ten second
+        pause we begin the reading stage, where dd is used to write each file
+        to /dev/null, once again concurrently. During each of these stages
+        zpool iostat data is recorded every 60 seconds, and the entire process
+        is recorded with perf.
+    </p>
+    <h2>Results</h2>
+    <h3>Multiple Pool Tests</h3>
+    <p>
+        My first set of tests were with 6 pools per machine, to simulate how
+        these servers are actually used. I did not test Raidz3 in this stage,
+        because of a lack of drives. For the control I used commit
+        <a href="https://github.com/zfsonlinux/zfs/commit/5475aada9474464f973788c1b2fc6216486fb303">
+            #5475aad</a> on the master branch. For testing the vectorization,
+        I applied Dolbeau's patches to the control code, along with some of my
+        own fixes. That code can be found
+        <a href="https://github.com/tomgarcia/zfs/commit/fa970e25575a97b68d526133a0de42e8ad8264b7">
+            here</a>.
+    </p>
+    <table>
+        <tr>
+            <th>Version</th>
+            <th>vdev_raidz_generate_parity CPU %</th>
+            <th>Kthreadd and z_wr_iss CPU %</th>
+            <th>Average Read Bandwith GB/s</th>
+            <th>Average Write Bandwith GB/s</th>
+        </tr>
+        <tr>
+            <td>Raidz1 Control</td>
+            <td>3.72</td>
+            <td>14.17</td>
+            <td>7.192</td>
+            <td>5.870</td>
+        </tr>
+        <tr>
+            <td>Raidz1 SSE</td>
+            <td>3.21</td>
+            <td>14.18</td>
+            <td>7.241</td>
+            <td>6.119</td>
+        </tr>
+        <tr>
+            <td>Raidz1 AVX128</td>
+            <td>3.25</td>
+            <td>14.31</td>
+            <td>7.243</td>
+            <td>5.904</td>
+        </tr>
+        <tr>
+            <td>Raidz2 Control</td>
+            <td>11.25</td>
+            <td>21.03</td>
+            <td>7.280</td>
+            <td>3.852</td>
+        </tr>
+        <tr>
+            <td>Raidz2 SSE</td>
+            <td>5.74</td>
+            <td>15.90</td>
+            <td>7.301</td>
+            <td>3.915</td>
+        </tr>
+        <tr>
+            <td>Raidz2 AVX128</td>
+            <td>5.75</td>
+            <td>15.99</td>
+            <td>7.309</td>
+            <td>3.920</td>
+        </tr>
+    </table>
+    <p>
+        From these tests we see that while Raidz1 has minimal speed increases,
+        Raidz2 spends noticeably less time doing parity calculations. That
+        change is not mirrored in bandwidth though; while time spent in
+        parity calculations drops by roughly five percentage points, bandwidth
+        increases by less than 2%, meaning there is some other bottleneck. My
+        hypothesis was that running multiple pools at once was the cause, so I
+        decided to repeat these tests with only a single pool running.
+    </p>
+    <h3>Single Pool Tests</h3>
+    <p>
+        For the this round of tests, I used the same code as previously, but
+        only setup a single zpool, and used numactl to limit the processes
+        to a single cpu. Because less disks were used in these tests, I was
+        also able to profile Raidz3.
+    </p>
+    <table>
+        <tr>
+            <th>Version</th>
+            <th>vdev_raidz_generate_parity CPU %</th>
+            <th>Kthreadd and z_wr_iss CPU %</th>
+            <th>Average Read Bandwith GB/s</th>
+            <th>Average Write Bandwith GB/s</th>
+        </tr>
+        <tr>
+            <td>Raidz1 Control</td>
+            <td>3.38</td>
+            <td>13.03</td>
+            <td>1.25</td>
+            <td>1.27</td>
+        </tr>
+        <tr>
+            <td>Raidz1 SSE</td>
+            <td>3.10</td>
+            <td>13.94</td>
+            <td>1.265</td>
+            <td>1.277</td>
+        </tr>
+        <tr>
+            <td>Raidz1 AVX128</td>
+            <td>2.77</td>
+            <td>12.53</td>
+            <td>1.27</td>
+            <td>1.283</td>
+        </tr>
+        <tr>
+            <td>Raidz2 Control</td>
+            <td>10.11</td>
+            <td>19.20</td>
+            <td>1.23</td>
+            <td>0.745</td>
+        </tr>
+        <tr>
+            <td>Raidz2 SSE</td>
+            <td>5.44</td>
+            <td>15.28</td>
+            <td>1.238</td>
+            <td>0.752</td>
+        </tr>
+        <tr>
+            <td>Raidz2 AVX128</td>
+            <td>5.40</td>
+            <td>15.24</td>
+            <td>1.233</td>
+            <td>0.750</td>
+        </tr>
+        <tr>
+            <td>Raidz3 Control</td>
+            <td>21.50</td>
+            <td>28.68</td>
+            <td>1.58</td>
+            <td>1.223</td>
+        </tr>
+        <tr>
+            <td>Raidz3 SSE</td>
+            <td>8.90</td>
+            <td>18.45</td>
+            <td>1.606</td>
+            <td>1.227</td>
+        </tr>
+        <tr>
+            <td>Raidz3 AVX128</td>
+            <td>8.22</td>
+            <td>17.21</td>
+            <td>1.61</td>
+            <td>1.228</td>
+        </tr>
+    </table>
+    <p>
+        Once again Raidz1 has minimal changes, but both
+        Raidz2 and Raidz3 spent significantly less time in parity calculation.
+        Yet once again, similar changes are not seen in bandwith: even though
+        vectorization causes an over 10 percentage point drop in parity
+        calculation time for Raidz3, bandwith changes by less 1%. Becausing
+        reducing the number of pools had no effect, I decided to run my tests
+        against the ABD branch, to see if those changes could have fixed the
+        bottleneck.
+    </p>
+    <h3>ABD Tests</h3>
+    <p>
+        For the control I used the code from commit
+        <a href="https://github.com/tomgarcia/zfs/commit/98ba1b9e69f5ccff9d060672daac51feec062a92">
+            #98ba1b9</a>, while for vectorization I included Dolbeau and I's patches,
+        which can be found at
+        <a href="https://github.com/tomgarcia/zfs/commit/b65072d4f2106428d3dc4f7b6e09713e8e0b530c">
+            #b65072d</a>.
+    </p>
+    <table>
+        <tr>
+            <th>Version</th>
+            <th>vdev_raidz_generate_parity CPU %</th>
+            <th>z_wr_iss CPU %</th>
+            <th>Average Read Bandwith GB/s</th>
+            <th>Average Write Bandwith GB/s</th>
+        </tr>
+        <tr>
+            <td>Raidz1 Control</td>
+            <td>4.79</td>
+            <td>10.86</td>
+            <td>1.247</td>
+            <td>1.275</td>
+        </tr>
+        <tr>
+            <td>Raidz1 SSE</td>
+            <td>2.68</td>
+            <td>9.45</td>
+            <td>1.263</td>
+            <td>1.282</td>
+        </tr>
+        <tr>
+            <td>Raidz1 AVX128</td>
+            <td>2.67</td>
+            <td>9.39</td>
+            <td>1.262</td>
+            <td>1.277</td>
+        </tr>
+        <tr>
+            <td>Raidz2 Control</td>
+            <td>8.21</td>
+            <td>13.46</td>
+            <td>1.228</td>
+            <td>0.744</td>
+        </tr>
+        <tr>
+            <td>Raidz2 SSE</td>
+            <td>3.75</td>
+            <td>9.58</td>
+            <td>1.238</td>
+            <td>0.751</td>
+        </tr>
+        <tr>
+            <td>Raidz2 AVX128</td>
+            <td>3.39</td>
+            <td>9.72</td>
+            <td>1.235</td>
+            <td>0.752</td>
+        </tr>
+        <tr>
+            <td>Raidz3 Control</td>
+            <td>18.20</td>
+            <td>22.90</td>
+            <td>1.528</td>
+            <td>1.237</td>
+        </tr>
+        <tr>
+            <td>Raidz3 SSE</td>
+            <td>6.05</td>
+            <td>12.04</td>
+            <td>1.497</td>
+            <td>1.243</td>
+        </tr>
+        <tr>
+            <td>Raidz3 AVX128</td>
+            <td>5.92</td>
+            <td>11.76</td>
+            <td>1.544</td>
+            <td>1.242</td>
+        </tr>
+    </table>
+    <p>
+        Here we see similar results (large changes in parity calculation time,
+        but not bandwidth) which means that ABD did not solve the problem.
+        This is the last of the parity tests I ran though, so finding the real
+        bottleneck must wait for a later time.
+    </p>
+    <h3>Striped Tests</h3>
+    <p>
+        I also tested some striped pools, in order to compare against
+        raid, in terms of bandwidth.
+    </p>
+    <table>
+        <tr>
+            <th>Version</th>
+            <th>Average Read Bandwith GB/s</th>
+            <th>Average Write Bandwith GB/s</th>
+        </tr>
+        <tr>
+            <td>Striped, Multiple Pools</td>
+            <td>7.260</td>
+            <td>6.640</td>
+        </tr>
+        <tr>
+            <td>Striped, Single Pool</td>
+            <td>1.260</td>
+            <td>1.307</td>
+        </tr>
+            <td>Striped, Single Pool w/ ABD</td>
+            <td>1.285</td>
+            <td>1.308</td>
+        </tr>
+    </table>
+    <p>
+        We can see that striped pools have a much higher write bandwidth than
+        raid pools (as expected), but strangely Raidz3 pools actuallly have
+        higher read bandwidth; all other raid levels have lower read bandwidth.
+    </p>
+    <h3>Checksum Tests</h3>
+    <p>
+        Aside from testing vectorized parity functions, I also tested Tuxoco's
+        vectorized SHA256 checksums. For my control I used the same code as
+        used in the normal tests, while for testing vectorization I added in
+        Tuxoco's, and this code can be found under my
+        <a href="https://github.com/tomgarcia/zfs/tree/vectorized-checksum">
+            vectorized-checksum</a> branch. For these tests I also turned
+        deduplication on for the pools, because SHA256 is only significantly
+        used during deduplication; the main checksum used by ZFS is Fletcher's.
+    </p>
+    <table>
+        <tr>
+            <th>Version</th>
+            <th>Kthreadd, z_rd_int, z_wr_iss CPU %</th>
+            <th>Average Read Bandwith GB/s</th>
+            <th>Average Write Bandwith GB/s</th>
+        </tr>
+        <tr>
+            <td>Raidz1 Control</td>
+            <td>77.17</td>
+            <td>0.496</td>
+            <td>0.333</td>
+        </tr>
+        <tr>
+            <td>Raidz1 SSE</td>
+            <td>72.74</td>
+            <td>0.660</td>
+            <td>0.427</td>
+        </tr>
+        <tr>
+            <td>Raidz1 AVX</td>
+            <td>71.51</td>
+            <td>0.660</td>
+            <td>0.428</td>
+        </tr>
+        <tr>
+            <td>Raidz2 Control</td>
+            <td>78.68</td>
+            <td>0.556</td>
+            <td>0.300</td>
+        </tr>
+        <tr>
+            <td>Raidz2 SSE</td>
+            <td>74.67</td>
+            <td>1.054</td>
+            <td>0.499</td>
+        </tr>
+        <tr>
+            <td>Raidz2 AVX</td>
+            <td>72.23</td>
+            <td>0.695</td>
+            <td>0.385</td>
+        </tr>
+        <tr>
+            <td>Raidz3 Control</td>
+            <td>76.01</td>
+            <td>0.598</td>
+            <td>0.315</td>
+        </tr>
+        <tr>
+            <td>Raidz3 SSE</td>
+            <td>72.45</td>
+            <td>0.750</td>
+            <td>0.398</td>
+        </tr>
+        <tr>
+            <td>Raidz3 AVX</td>
+            <td>71.60</td>
+            <td>0.765</td>
+            <td>0.411</td>
+        </tr>
+        <tr>
+            <td>Striped Control</td>
+            <td>79.81</td>
+            <td>0.680</td>
+            <td>0.325</td>
+        </tr>
+        <tr>
+            <td>Striped SSE</td>
+            <td>73.26</td>
+            <td>0.695</td>
+            <td>0.429</td>
+        </tr>
+        <tr>
+            <td>Striped AVX</td>
+            <td>72.15</td>
+            <td>0.690</td>
+            <td>0.432</td>
+        </tr>
+    </table>
+    <p>
+        Here we see major changes in both checksum calculation time and
+        bandwidth; write bandwidth increases by roughly 30%, regardless of
+        which Raid level is in use.
+    </p>
+    <h2>Conclusion</h2>
+    <p>
+        From these tests we can see that the time needed to calculate parity is
+        significantly reduced with vectorization, but there is little bandwith
+        increase, meaning there must be some other bottleneck. One way to find
+        this bottleneck is to compare flamegraphs:
+    </p>
+    <object data="graphs/control-raidz3.svg"></object>
+    <object data="graphs/avx-raidz3.svg"></object>
+    <p>
+        Looking at the Raidz3 control and Raidz3 AVX128 graphs, we can see that
+        much more time is used for idling, which suggests that hardware may be
+        the bottleneck; but seeing that striped zpools still have a higher
+        bandwidth than raid pools, it seems unlikely that hardware is the only
+        limiting factor. For further research into this, I would suggest
+        testing on other systems, to see if the problem is specific to our
+        hardware, and looking through the other stages of the zio pipeline, to
+        look for potential bottlnecks.
+    </p>
+    <p>
+        Vectorized checksum calculations, on the other hand, do result in a
+        large increase in bandwidth, showing that checksums are the main
+        bottleneck for deduplication. Using deduplication still results in
+        a significant decrease in bandwidth, but vectorization has reduced
+        that, and therefore is a successful optimization.
+    </p>
+</main>
+</body>
+</html>
