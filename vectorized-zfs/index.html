@@ -216,10 +216,10 @@
     <p>
         For the control I used the code from commit
         <a href="https://github.com/tomgarcia/zfs/commit/98ba1b9e69f5ccff9d060672daac51feec062a92">
-            #98ba1b9</a>, while for vectorization I included Dolbeau and I's patches,
-        which can be found at
+            #98ba1b9</a>, while for vectorization I included Dolbeau's and my
+        patches, which can be found 
         <a href="https://github.com/tomgarcia/zfs/commit/b65072d4f2106428d3dc4f7b6e09713e8e0b530c">
-            #b65072d</a>.
+            here</a>.
     </p>
     <table>
         <tr>
@@ -441,17 +441,16 @@
         increase, meaning there must be some other bottleneck. One way to find
         this bottleneck is to compare flamegraphs:
     </p>
-    <object data="data/single/raidz3/control/flamegraph.svg"></object>
-    <object data="data/single/raidz3/avx128/flamegraph.svg"></object>
+    <object data="data/abd/raidz3/control/flamegraph.svg"></object>
+    <object data="data/abd/raidz3/avx128/flamegraph.svg"></object>
     <p>
-        Looking at the Raidz3 control and Raidz3 AVX128 graphs, we can see that
-        much more time is used for idling, which suggests that hardware may be
-        the bottleneck; but seeing that striped zpools still have a higher
-        bandwidth than raid pools, it seems unlikely that hardware is the only
-        limiting factor. For further research into this, I would suggest
-        testing on other systems, to see if the problem is specific to our
-        hardware, and looking through the other stages of the zio pipeline, to
-        look for potential bottlnecks.
+        Looking at the ABD Raidz3 control and ABD Raidz3 AVX128 graphs, we can
+        see that a much higher percentage of the time is spent generating
+        random data, which could serve as a bottleneck. The swapper process
+        also takes a higher percetage of CPU time, suggesting that hardware may
+        be the problem. For further investigation, I would suggest
+        pre-generating the data to be written, and testing it on other systems,
+        to see if our hardware is a problem.
     </p>
     <p>
         Vectorized checksum calculations, on the other hand, do result in a
